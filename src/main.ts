@@ -1,36 +1,50 @@
 /**
- * Main Application Entry Point
+ * Main Application Entry Point — Moovit-style real-time bus tracking
  */
 
 import { StateManager } from './frontend/state/StateManager';
 import { RouteViewer } from './frontend/components/RouteViewer';
 import { StopSelector } from './frontend/components/StopSelector';
 import { BusTrackerDisplay } from './frontend/components/BusTrackerDisplay';
+import { Stop, BusLocation, StopStatus } from './shared/types';
+import { calculateStopStatuses } from './shared/stopStatusCalculator';
 
-// Leaflet is loaded via CDN in system.html
 declare const L: any;
+
+// ─── Haversine distance (meters) ────────────────────────────────────────────
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3;
+  const toR = (d: number) => d * Math.PI / 180;
+  const dLat = toR(lat2 - lat1), dLon = toR(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toR(lat1))*Math.cos(toR(lat2))*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
 
 class BusTrackingApp {
   private stateManager: StateManager;
   private routeViewer: RouteViewer;
   private stopSelector: StopSelector;
   private busTrackerDisplay: BusTrackerDisplay;
-  private pollingInterval: number = 10000;
+  private pollingInterval = 5000; // 5s for snappier updates
   private errorDisplayElement: HTMLElement | null = null;
+
+  // Map
   private map: any = null;
-  private mapMarkers: any[] = [];
-  private busMarkers: Map<string, any> = new Map();
+  private stopMarkers: any[] = [];
+  private busMarkers = new Map<string, any>();
+  private routePolyline: any = null;
+  private selectedStopMarker: any = null;
+
+  // Voice
+  private lastAnnouncedStop = new Map<string, string>(); // busId → stopId
+
+  // Current route stops
+  private currentStops: Stop[] = [];
 
   constructor() {
-    // Initialize State Manager with API base URL
     this.stateManager = new StateManager('/api');
+    this.stateManager.setErrorCallback((error, context) => this.displayError(error.message, context));
 
-    // Set up error handling callback
-    this.stateManager.setErrorCallback((error, context) => {
-      this.displayError(error.message, context);
-    });
-
-    // Initialize UI Components with callbacks
     this.routeViewer = new RouteViewer('route-list', 'route-stops', {
       onRouteSelected: (routeId) => this.handleRouteSelection(routeId)
     });
@@ -40,328 +54,299 @@ class BusTrackingApp {
     });
 
     this.busTrackerDisplay = new BusTrackerDisplay('bus-tracker', {
-      onBusSelected: (busId) => this.handleBusSelection(busId)
+      onBusSelected: () => {}
     });
 
-    // Create error display element
     this.createErrorDisplay();
   }
 
-  /**
-   * Initialize the application
-   * Loads initial data and sets up the UI
-   */
   async initialize(): Promise<void> {
     try {
-      console.log('Initializing Bus Tracking System...');
-
-      // Load all available routes
       const routes = await this.stateManager.loadRoutes();
-      console.log(`Loaded ${routes.length} routes`);
-
-      // Display routes in the UI
       this.routeViewer.displayRoutes(routes);
-
-      // If there are routes, optionally auto-select the first one
-      // (Commented out to let user select manually)
-      // if (routes.length > 0) {
-      //   await this.handleRouteSelection(routes[0].id);
-      // }
-
-      console.log('Bus Tracking System initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize application:', error);
       this.displayError('Failed to load routes. Please refresh the page.', 'initialization');
     }
   }
 
-  /**
-   * Handle route selection
-   * Loads stops for the selected route and starts tracking buses
-   */
   private async handleRouteSelection(routeId: string): Promise<void> {
     try {
-      console.log(`Route selected: ${routeId}`);
-
-      // Stop any existing tracking
       this.stateManager.stopTrackingBuses();
       this.stateManager.stopPolling();
-
-      // Clear previous selections and displays
       this.stopSelector.clearSelection();
       this.busTrackerDisplay.clear();
+      this.lastAnnouncedStop.clear();
+      this.hideNextStopBanner();
 
-      // Select the route in state manager (loads route details and stops)
       await this.stateManager.selectRoute(routeId);
-
-      // Get the stops for the selected route
       const stops = this.stateManager.getStopsForCurrentRoute();
-      console.log(`Loaded ${stops.length} stops for route ${routeId}`);
+      this.currentStops = stops;
 
-      // Display route stops in the route viewer
       this.routeViewer.displayRouteStops(routeId, stops);
-
-      // Display stops in the stop selector
       this.stopSelector.displayStops(stops);
-
-      // Set stops in bus tracker for status calculation
       this.busTrackerDisplay.setStops(stops);
 
-      // Update map with route stops
       this.initMap();
-      this.updateMap(stops);
+      this.drawRouteOnMap(stops);
 
-      // Start tracking buses on this route
       this.stateManager.startTrackingBuses(routeId);
-
-      // Start polling for real-time updates
       this.stateManager.startPolling(this.pollingInterval);
 
-      // Initial bus location fetch and display
       await this.updateBusLocations();
 
-      // Set up periodic updates
-      this.startPeriodicUpdates();
+      // Poll more frequently for live feel
+      setInterval(() => {
+        if (this.stateManager.isTrackingBuses()) this.updateBusLocations();
+      }, this.pollingInterval);
 
-      console.log(`Started tracking buses on route ${routeId}`);
     } catch (error) {
-      console.error('Error handling route selection:', error);
       this.displayError('Failed to load route details. Please try again.', 'route selection');
     }
   }
 
-  /**
-   * Handle stop selection
-   * Updates the state manager with the selected drop-off stop
-   */
   private handleStopSelection(stopId: string): void {
-    console.log(`Stop selected: ${stopId}`);
-
-    // Update state manager with selected stop
     this.stateManager.selectDropOffStop(stopId);
-
-    // Get the selected stop details
     const stop = this.stateManager.getStop(stopId);
-    if (stop) {
-      console.log(`Drop-off stop set to: ${stop.name} (${stop.address})`);
+    if (!stop || !this.map) return;
 
-      // Pan map to selected stop and show a popup
-      if (this.map) {
-        this.map.setView([stop.latitude, stop.longitude], 16, { animate: true });
+    this.map.setView([stop.latitude, stop.longitude], 16, { animate: true });
 
-        // Remove previous selected stop marker if any
-        if ((this as any)._selectedStopMarker) {
-          (this as any)._selectedStopMarker.remove();
-        }
+    if (this.selectedStopMarker) this.selectedStopMarker.remove();
 
-        const selectedIcon = (window as any).L.divIcon({
-          className: '',
-          html: '<div style="background:#10b981;color:white;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.5)">📍</div>',
-          iconSize: [34, 34],
-          iconAnchor: [17, 17]
-        });
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:#10b981;color:white;border-radius:50%;width:36px;height:36px;
+             display:flex;align-items:center;justify-content:center;font-size:18px;
+             border:3px solid white;box-shadow:0 2px 10px rgba(0,0,0,.5)">📍</div>`,
+      iconSize: [36, 36], iconAnchor: [18, 18]
+    });
 
-        const marker = (window as any).L.marker([stop.latitude, stop.longitude], { icon: selectedIcon })
-          .addTo(this.map)
-          .bindPopup(`<strong>Your stop: ${stop.name}</strong><br>${stop.address}`)
-          .openPopup();
-
-        (this as any)._selectedStopMarker = marker;
-      }
-    }
+    this.selectedStopMarker = L.marker([stop.latitude, stop.longitude], { icon })
+      .addTo(this.map)
+      .bindPopup(`<strong>Your stop: ${stop.name}</strong><br><small>${stop.address}</small>`)
+      .openPopup();
   }
 
-  /**
-   * Handle bus selection (optional - for future enhancements)
-   */
-  private handleBusSelection(busId: string): void {
-    console.log(`Bus selected: ${busId}`);
-    // Future enhancement: could show detailed bus information
-  }
-
-  /**
-   * Update bus locations from state manager and display them
-   */
   private async updateBusLocations(): Promise<void> {
-    try {
-      // Get current bus locations from state manager
-      const busLocations = this.stateManager.getBusLocations();
+    const busLocations = this.stateManager.getBusLocations();
+    if (busLocations.length === 0) { this.busTrackerDisplay.clear(); return; }
 
-      if (busLocations.length === 0) {
-        console.log('No active buses on this route');
-        this.busTrackerDisplay.clear();
-        return;
-      }
-
-      // Display buses in the tracker
-      this.busTrackerDisplay.displayBuses(busLocations);
-
-      // Update bus markers on map
-      this.updateBusMarkers(busLocations);
-
-      // Update stop selector with latest bus locations for ETA
-      this.stopSelector.updateBusLocations(busLocations);
-
-      console.log(`Updated ${busLocations.length} bus location(s)`);
-    } catch (error) {
-      console.error('Error updating bus locations:', error);
-    }
+    this.busTrackerDisplay.displayBuses(busLocations);
+    this.moveBusMarkersOnMap(busLocations);
+    this.stopSelector.updateBusLocations(busLocations);
+    this.updateNextStopBanner(busLocations);
   }
+
+  // ─── Map ──────────────────────────────────────────────────────────────────
 
   private initMap(): void {
     if (this.map) return;
-    const mapEl = document.getElementById('route-map');
-    if (!mapEl) return;
-    mapEl.innerHTML = '';
-    this.map = L.map('route-map').setView([40.758, -73.985], 13);
+    const el = document.getElementById('route-map');
+    if (!el) return;
+    el.innerHTML = '';
+    this.map = L.map('route-map').setView([3.05, 101.65], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19
     }).addTo(this.map);
   }
 
-  private updateMap(stops: Array<{ id: string; name: string; latitude: number; longitude: number }>): void {
-    if (!this.map) this.initMap();
+  private drawRouteOnMap(stops: Stop[]): void {
     if (!this.map) return;
 
-    // Clear existing stop markers
-    this.mapMarkers.forEach(m => m.remove());
-    this.mapMarkers = [];
+    // Clear old markers and polyline
+    this.stopMarkers.forEach(m => m.remove());
+    this.stopMarkers = [];
+    if (this.routePolyline) { this.routePolyline.remove(); this.routePolyline = null; }
 
     if (stops.length === 0) return;
 
-    const stopIcon = L.divIcon({
-      className: '',
-      html: '<div style="background:#4f46e5;color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)">🚏</div>',
-      iconSize: [28, 28],
-      iconAnchor: [14, 14]
-    });
-
-    const bounds: [number, number][] = [];
-    stops.forEach((stop, i) => {
-      const marker = L.marker([stop.latitude, stop.longitude], { icon: stopIcon })
-        .addTo(this.map)
-        .bindPopup(`<strong>${i + 1}. ${stop.name}</strong>`);
-      this.mapMarkers.push(marker);
-      bounds.push([stop.latitude, stop.longitude]);
-    });
+    const coords: [number, number][] = stops.map(s => [s.latitude, s.longitude]);
 
     // Draw route line
-    const polyline = L.polyline(bounds, { color: '#4f46e5', weight: 3, opacity: 0.7, dashArray: '6,4' }).addTo(this.map);
-    this.mapMarkers.push(polyline);
-    this.map.fitBounds(bounds, { padding: [30, 30] });
+    this.routePolyline = L.polyline(coords, {
+      color: '#4f46e5', weight: 4, opacity: 0.8
+    }).addTo(this.map);
+
+    // Stop markers with sequence numbers
+    stops.forEach((stop, i) => {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="background:#4f46e5;color:white;border-radius:50%;width:26px;height:26px;
+               display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+               border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)">${i+1}</div>`,
+        iconSize: [26, 26], iconAnchor: [13, 13]
+      });
+      const m = L.marker([stop.latitude, stop.longitude], { icon })
+        .addTo(this.map)
+        .bindPopup(`<strong>${i+1}. ${stop.name}</strong><br><small>${stop.address}</small>`);
+      this.stopMarkers.push(m);
+    });
+
+    this.map.fitBounds(coords, { padding: [40, 40] });
   }
 
-  private updateBusMarkers(buses: Array<{ busId: string; latitude: number; longitude: number }>): void {
+  private moveBusMarkersOnMap(buses: BusLocation[]): void {
     if (!this.map) return;
-
-    // Remove old bus markers
-    this.busMarkers.forEach(m => m.remove());
-    this.busMarkers.clear();
 
     const busIcon = L.divIcon({
       className: '',
-      html: '<div style="background:#f59e0b;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4)">🚌</div>',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16]
+      html: `<div style="background:#f59e0b;color:white;border-radius:50%;width:36px;height:36px;
+             display:flex;align-items:center;justify-content:center;font-size:18px;
+             border:2px solid white;box-shadow:0 2px 10px rgba(0,0,0,.4)">🚌</div>`,
+      iconSize: [36, 36], iconAnchor: [18, 18]
     });
 
     buses.forEach(bus => {
-      const marker = L.marker([bus.latitude, bus.longitude], { icon: busIcon })
-        .addTo(this.map)
-        .bindPopup(`<strong>Bus ${bus.busId}</strong>`);
-      this.busMarkers.set(bus.busId, marker);
+      const existing = this.busMarkers.get(bus.busId);
+      if (existing) {
+        // Smoothly move existing marker
+        existing.setLatLng([bus.latitude, bus.longitude]);
+        existing.setPopupContent(`<strong>Bus ${bus.busId}</strong><br>Speed: ${bus.speed ?? '?'} km/h`);
+      } else {
+        const m = L.marker([bus.latitude, bus.longitude], { icon: busIcon })
+          .addTo(this.map)
+          .bindPopup(`<strong>Bus ${bus.busId}</strong><br>Speed: ${bus.speed ?? '?'} km/h`);
+        this.busMarkers.set(bus.busId, m);
+      }
+    });
+
+    // Remove markers for buses no longer active
+    const activeBusIds = new Set(buses.map(b => b.busId));
+    this.busMarkers.forEach((marker, busId) => {
+      if (!activeBusIds.has(busId)) { marker.remove(); this.busMarkers.delete(busId); }
     });
   }
 
-  /**
-   * Start periodic updates for bus locations
-   */
-  private startPeriodicUpdates(): void {
-    // Set up interval to update UI with latest bus locations
-    setInterval(() => {
-      if (this.stateManager.isTrackingBuses()) {
-        this.updateBusLocations();
-      }
-    }, this.pollingInterval);
-  }
+  // ─── Next Stop Banner ─────────────────────────────────────────────────────
 
-  /**
-   * Create error display element
-   */
-  private createErrorDisplay(): void {
-    // Check if error display already exists
-    let errorDisplay = document.getElementById('error-display');
-    
-    if (!errorDisplay) {
-      // Create error display element
-      errorDisplay = document.createElement('div');
-      errorDisplay.id = 'error-display';
-      errorDisplay.className = 'error-display hidden';
-      
-      // Insert at the top of the container
-      const container = document.querySelector('.container');
-      if (container) {
-        container.insertBefore(errorDisplay, container.firstChild);
+  private updateNextStopBanner(buses: BusLocation[]): void {
+    if (this.currentStops.length === 0 || buses.length === 0) return;
+
+    // Use the first bus for the banner (can extend to multi-bus later)
+    const bus = buses[0];
+    const statuses = calculateStopStatuses(bus, this.currentStops);
+
+    // Find current stop (CURRENT) and next stop (first UPCOMING)
+    const currentStop = this.currentStops.find((_, i) => statuses[i]?.status === StopStatus.CURRENT);
+    const nextStopIdx = statuses.findIndex(s => s.status === StopStatus.UPCOMING);
+    const nextStop = nextStopIdx !== -1 ? this.currentStops[nextStopIdx] : null;
+
+    this.showNextStopBanner(currentStop ?? null, nextStop, bus);
+
+    // Voice announcement: announce next stop when bus is within ~300m
+    if (nextStop) {
+      const dist = haversine(bus.latitude, bus.longitude, nextStop.latitude, nextStop.longitude);
+      const lastAnnounced = this.lastAnnouncedStop.get(bus.busId);
+      if (dist <= 300 && lastAnnounced !== nextStop.id) {
+        this.lastAnnouncedStop.set(bus.busId, nextStop.id);
+        this.announce(`Next stop: ${nextStop.name}`);
       }
     }
 
-    this.errorDisplayElement = errorDisplay;
+    // Announce "Arriving" when bus is at current stop
+    if (currentStop) {
+      const key = `arriving-${bus.busId}`;
+      if (this.lastAnnouncedStop.get(key) !== currentStop.id) {
+        this.lastAnnouncedStop.set(key, currentStop.id);
+        this.announce(`Now arriving at ${currentStop.name}`);
+      }
+    }
   }
 
-  /**
-   * Display an error message to the user
-   */
-  private displayError(message: string, context: string): void {
-    console.error(`Error in ${context}: ${message}`);
-
-    if (!this.errorDisplayElement) {
-      return;
+  private showNextStopBanner(
+    currentStop: Stop | null,
+    nextStop: Stop | null,
+    bus: BusLocation
+  ): void {
+    let banner = document.getElementById('next-stop-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'next-stop-banner';
+      banner.className = 'next-stop-banner';
+      const main = document.querySelector('main');
+      if (main) main.insertBefore(banner, main.firstChild);
     }
 
-    // Create error message element
-    const errorMessage = document.createElement('div');
-    errorMessage.className = 'error-message';
-    errorMessage.innerHTML = `
-      <span class="error-icon">⚠️</span>
-      <span class="error-text">${message}</span>
-      <button class="error-close" onclick="this.parentElement.remove()">×</button>
+    const nextDist = nextStop
+      ? Math.round(haversine(bus.latitude, bus.longitude, nextStop.latitude, nextStop.longitude))
+      : null;
+
+    banner.innerHTML = `
+      <div class="nsb-inner">
+        ${currentStop ? `
+          <div class="nsb-current">
+            <span class="nsb-label">Now at</span>
+            <span class="nsb-stop-name">${currentStop.name}</span>
+          </div>` : ''}
+        ${nextStop ? `
+          <div class="nsb-next">
+            <span class="nsb-label">Next stop</span>
+            <span class="nsb-stop-name nsb-next-name">${nextStop.name}</span>
+            ${nextDist !== null ? `<span class="nsb-dist">${nextDist < 1000 ? nextDist + 'm' : (nextDist/1000).toFixed(1) + 'km'} away</span>` : ''}
+          </div>` : `<div class="nsb-next"><span class="nsb-label">End of route</span></div>`}
+        <button class="nsb-voice-btn" onclick="window.__announceNext && window.__announceNext()" title="Hear announcement">🔊</button>
+      </div>
     `;
 
-    // Clear previous errors and add new one
-    this.errorDisplayElement.innerHTML = '';
-    this.errorDisplayElement.appendChild(errorMessage);
-    this.errorDisplayElement.classList.remove('hidden');
-
-    // Auto-hide after 10 seconds
-    setTimeout(() => {
-      if (this.errorDisplayElement) {
-        this.errorDisplayElement.classList.add('hidden');
-      }
-    }, 10000);
+    // Expose announce function for the button
+    (window as any).__announceNext = () => {
+      if (nextStop) this.announce(`Next stop: ${nextStop.name}`);
+      else if (currentStop) this.announce(`Now arriving at ${currentStop.name}`);
+    };
   }
 
-  /**
-   * Clean up resources when the application is closed
-   */
+  private hideNextStopBanner(): void {
+    const banner = document.getElementById('next-stop-banner');
+    if (banner) banner.remove();
+  }
+
+  // ─── Voice Announcements ──────────────────────────────────────────────────
+
+  private announce(text: string): void {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  // ─── Error Display ────────────────────────────────────────────────────────
+
+  private createErrorDisplay(): void {
+    let el = document.getElementById('error-display');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'error-display';
+      el.className = 'error-display hidden';
+      document.querySelector('.container')?.insertBefore(el, document.querySelector('.container')!.firstChild);
+    }
+    this.errorDisplayElement = el;
+  }
+
+  private displayError(message: string, context: string): void {
+    console.error(`Error in ${context}: ${message}`);
+    if (!this.errorDisplayElement) return;
+    this.errorDisplayElement.innerHTML = `
+      <div class="error-message">
+        <span class="error-icon">⚠️</span>
+        <span class="error-text">${message}</span>
+        <button class="error-close" onclick="this.parentElement.remove()">×</button>
+      </div>`;
+    this.errorDisplayElement.classList.remove('hidden');
+    setTimeout(() => this.errorDisplayElement?.classList.add('hidden'), 10000);
+  }
+
   cleanup(): void {
-    console.log('Cleaning up Bus Tracking System...');
     this.stateManager.stopTrackingBuses();
     this.stateManager.stopPolling();
   }
 }
 
-// Initialize the application when the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM loaded, initializing application...');
-  
   const app = new BusTrackingApp();
-  app.initialize().catch(error => {
-    console.error('Failed to initialize application:', error);
-  });
-
-  // Clean up on page unload
-  window.addEventListener('beforeunload', () => {
-    app.cleanup();
-  });
+  app.initialize();
+  window.addEventListener('beforeunload', () => app.cleanup());
 });

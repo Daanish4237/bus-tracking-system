@@ -789,3 +789,96 @@ footer {
   color: var(--gray-400);
   font-style: italic;
 }
+
+/* ============================================================
+   Next Stop Banner (Moovit-style)
+   ============================================================ */
+.next-stop-banner {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-radius: var(--radius);
+  padding: 0;
+  margin-bottom: 4px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  border: 1.5px solid #334155;
+  animation: slideDown 0.3s ease;
+}
+
+.nsb-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 72px;
+}
+
+.nsb-current {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 14px 20px;
+  background: rgba(16,185,129,.15);
+  border-right: 1px solid #334155;
+  min-width: 180px;
+}
+
+.nsb-next {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 14px 20px;
+  flex: 1;
+}
+
+.nsb-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.nsb-stop-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  line-height: 1.2;
+}
+
+.nsb-next-name {
+  color: #fbbf24;
+}
+
+.nsb-dist {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  background: rgba(255,255,255,.06);
+  padding: 2px 8px;
+  border-radius: 20px;
+  width: fit-content;
+}
+
+.nsb-voice-btn {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0 18px;
+  color: #94a3b8;
+  transition: color 0.2s, transform 0.2s;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.nsb-voice-btn:hover {
+  color: #fbbf24;
+  transform: scale(1.2);
+}
+
+@media (max-width: 768px) {
+  .nsb-inner { flex-wrap: wrap; }
+  .nsb-current { min-width: unset; width: 100%; border-right: none; border-bottom: 1px solid #334155; }
+}
