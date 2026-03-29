@@ -175,6 +175,9 @@ class BusTrackingApp {
       // Update bus markers on map
       this.updateBusMarkers(busLocations);
 
+      // Update stop selector with latest bus locations for ETA
+      this.stopSelector.updateBusLocations(busLocations);
+
       console.log(`Updated ${busLocations.length} bus location(s)`);
     } catch (error) {
       console.error('Error updating bus locations:', error);

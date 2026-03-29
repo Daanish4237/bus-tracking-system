@@ -2,23 +2,33 @@
  * Stop Selector Component
  */
 
-import { Stop } from '../../shared/types';
+import { Stop, BusLocation } from '../../shared/types';
 
 export interface StopSelectorCallbacks {
   onStopSelected?: (stopId: string) => void;
 }
+
+const AVG_BUS_SPEED_KMH = 20; // fallback speed if bus has no speed data
 
 export class StopSelector {
   private containerElement: HTMLElement;
   private callbacks: StopSelectorCallbacks;
   private selectedStopId: string | null = null;
   private currentStops: Stop[] = [];
+  private busLocations: BusLocation[] = [];
 
   constructor(containerElementId: string, callbacks: StopSelectorCallbacks = {}) {
     const el = document.getElementById(containerElementId);
     if (!el) throw new Error(`Element with id "${containerElementId}" not found`);
     this.containerElement = el;
     this.callbacks = callbacks;
+  }
+
+  /** Update bus locations so ETA can be calculated */
+  updateBusLocations(buses: BusLocation[]): void {
+    this.busLocations = buses;
+    // Refresh ETA if a stop is already selected
+    if (this.selectedStopId) this.displaySelectedStopInfo();
   }
 
   displayStops(stops: Stop[]): void {
@@ -64,7 +74,6 @@ export class StopSelector {
       stopContent.appendChild(stopAddress);
       stopItem.appendChild(stopContent);
 
-      // Ripple effect on click
       stopItem.addEventListener('click', (e) => {
         this.addRipple(stopItem, e);
         this.onStopSelected(stop.id);
@@ -107,6 +116,55 @@ export class StopSelector {
     setTimeout(() => ripple.remove(), 600);
   }
 
+  /**
+   * Haversine distance in meters between two lat/lon points
+   */
+  private haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371e3;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  /**
+   * Estimate minutes until the bus reaches the target stop.
+   * Strategy: find the closest stop the bus has already passed (its current position),
+   * then sum distances along the route from there to the target stop.
+   */
+  private estimateETA(bus: BusLocation, targetStopId: string): number | null {
+    const stops = this.currentStops;
+    if (stops.length === 0) return null;
+
+    const targetIdx = stops.findIndex(s => s.id === targetStopId);
+    if (targetIdx === -1) return null;
+
+    // Find which stop index the bus is closest to right now
+    let closestIdx = 0;
+    let minDist = Infinity;
+    stops.forEach((stop, i) => {
+      const d = this.haversine(bus.latitude, bus.longitude, stop.latitude, stop.longitude);
+      if (d < minDist) { minDist = d; closestIdx = i; }
+    });
+
+    // If bus is already past the target stop, return 0
+    if (closestIdx >= targetIdx) return 0;
+
+    // Sum distances: bus → next stop → ... → target stop
+    let totalMeters = this.haversine(bus.latitude, bus.longitude, stops[closestIdx + 1]?.latitude ?? stops[closestIdx].latitude, stops[closestIdx + 1]?.longitude ?? stops[closestIdx].longitude);
+
+    for (let i = closestIdx + 1; i < targetIdx; i++) {
+      totalMeters += this.haversine(stops[i].latitude, stops[i].longitude, stops[i + 1].latitude, stops[i + 1].longitude);
+    }
+
+    const speedKmh = (bus.speed && bus.speed > 0) ? bus.speed : AVG_BUS_SPEED_KMH;
+    const speedMs = (speedKmh * 1000) / 60; // meters per minute
+    return Math.round(totalMeters / speedMs);
+  }
+
   private displaySelectedStopInfo(): void {
     const existingInfo = this.containerElement.querySelector('.selected-stop-info');
     if (existingInfo) existingInfo.remove();
@@ -136,6 +194,35 @@ export class StopSelector {
 
     infoContent.appendChild(nameEl);
     infoContent.appendChild(addrEl);
+
+    // ETA section
+    if (this.busLocations.length > 0) {
+      const etaContainer = document.createElement('div');
+      etaContainer.className = 'eta-container';
+
+      this.busLocations.forEach(bus => {
+        const minutes = this.estimateETA(bus, this.selectedStopId!);
+        const etaEl = document.createElement('div');
+        etaEl.className = 'eta-item';
+
+        if (minutes === null) {
+          etaEl.innerHTML = `🚌 <strong>Bus ${bus.busId}:</strong> ETA unavailable`;
+        } else if (minutes === 0) {
+          etaEl.innerHTML = `🚌 <strong>Bus ${bus.busId}:</strong> <span class="eta-value eta-arrived">Arriving now</span>`;
+        } else {
+          etaEl.innerHTML = `🚌 <strong>Bus ${bus.busId}:</strong> <span class="eta-value">~${minutes} min</span>`;
+        }
+
+        etaContainer.appendChild(etaEl);
+      });
+
+      infoContent.appendChild(etaContainer);
+    } else {
+      const noEta = document.createElement('p');
+      noEta.className = 'eta-no-bus';
+      noEta.textContent = '⏱ No active buses — ETA unavailable';
+      infoContent.appendChild(noEta);
+    }
 
     const requestBtn = document.createElement('button');
     requestBtn.className = 'request-stop-btn';
@@ -205,5 +292,6 @@ export class StopSelector {
     this.containerElement.innerHTML = '';
     this.selectedStopId = null;
     this.currentStops = [];
+    this.busLocations = [];
   }
 }

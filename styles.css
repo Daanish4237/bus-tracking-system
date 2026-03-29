@@ -748,3 +748,44 @@ footer {
 @media (max-width: 768px) {
   .map-section { grid-column: 1; }
 }
+
+/* ============================================================
+   ETA Display
+   ============================================================ */
+.eta-container {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eta-item {
+  font-size: 0.88rem;
+  color: var(--gray-600);
+  padding: 6px 10px;
+  background: var(--gray-50);
+  border-radius: 6px;
+  border: 1px solid var(--gray-200);
+}
+
+.eta-value {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color: white;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.eta-value.eta-arrived {
+  background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+}
+
+.eta-no-bus {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: var(--gray-400);
+  font-style: italic;
+}
