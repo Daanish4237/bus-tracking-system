@@ -246,6 +246,11 @@ class BusTrackingApp {
       this.busMarkers.set(bus.busId, marker);
     });
   }
+
+  /**
+   * Start periodic updates for bus locations
+   */
+  private startPeriodicUpdates(): void {
     // Set up interval to update UI with latest bus locations
     setInterval(() => {
       if (this.stateManager.isTrackingBuses()) {
