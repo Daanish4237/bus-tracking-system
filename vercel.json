@@ -23,8 +23,12 @@
       "dest": "/api/index.ts"
     },
     {
+      "src": "/(.*\\.(js|css|png|jpg|svg|ico|woff|woff2|ttf|map))",
+      "dest": "/$1"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/dist/frontend/$1"
+      "dest": "/system.html"
     }
   ]
 }
