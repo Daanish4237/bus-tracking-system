@@ -69,6 +69,9 @@ class BusTrackingApp {
     try {
       const routes = await this.stateManager.loadRoutes();
       this.routeViewer.displayRoutes(routes);
+      // Start GPS immediately so banner shows real location before route is selected
+      this.initMap();
+      this.startPassengerGPS();
     } catch (error) {
       this.displayError('Failed to load routes. Please refresh the page.', 'initialization');
     }
@@ -178,13 +181,15 @@ class BusTrackingApp {
     const { latitude, longitude, accuracy } = pos.coords;
 
     this.showGPSStatus(`GPS active · ±${Math.round(accuracy)}m`, 'ok');
-
-    // Update passenger marker on map
     this.updatePassengerMarker(latitude, longitude);
 
-    if (this.currentStops.length === 0) return;
+    if (this.currentStops.length === 0) {
+      // No route selected — show real place name via reverse geocoding
+      this.showRealPlaceName(latitude, longitude);
+      return;
+    }
 
-    // Find nearest stop regardless of distance
+    // Route selected — show nearest stop on that route
     let nearestStop = this.currentStops[0];
     let nearestDist = Infinity;
     this.currentStops.forEach(stop => {
@@ -192,57 +197,113 @@ class BusTrackingApp {
       if (d < nearestDist) { nearestDist = d; nearestStop = stop; }
     });
 
-    // Find next stop after nearest
     const nearestIdx = this.currentStops.indexOf(nearestStop);
     const nextStop = this.currentStops[nearestIdx + 1] ?? null;
+    const isAtStop = nearestDist <= 100;
 
-    // Always show banner with nearest stop info
     const fakeBus: BusLocation = {
-      busId: 'passenger',
-      routeId: '',
-      latitude,
-      longitude,
-      timestamp: new Date(),
+      busId: 'passenger', routeId: '',
+      latitude, longitude, timestamp: new Date(),
       speed: pos.coords.speed ? pos.coords.speed * 3.6 : undefined
     };
 
-    // Show banner — use proximity threshold only for "Now at" vs "Near"
-    const isAtStop = nearestDist <= 100;
     this.showNextStopBannerDirect(
       isAtStop ? nearestStop : null,
       isAtStop ? nextStop : nearestStop,
-      fakeBus,
-      nearestDist
+      fakeBus, nearestDist
     );
 
-    // Voice announcement when within 300m of next stop
+    // Voice announcements
     if (nextStop) {
       const distToNext = haversine(latitude, longitude, nextStop.latitude, nextStop.longitude);
-      const lastAnnounced = this.lastAnnouncedStop.get('passenger-next');
-      if (distToNext <= 300 && lastAnnounced !== nextStop.id) {
+      if (distToNext <= 300 && this.lastAnnouncedStop.get('passenger-next') !== nextStop.id) {
         this.lastAnnouncedStop.set('passenger-next', nextStop.id);
         this.announce(`Next stop: ${nextStop.name}`);
       }
     }
-
-    if (isAtStop) {
-      const lastArriving = this.lastAnnouncedStop.get('passenger-arriving');
-      if (lastArriving !== nearestStop.id) {
-        this.lastAnnouncedStop.set('passenger-arriving', nearestStop.id);
-        this.announce(`Now arriving at ${nearestStop.name}`);
-      }
+    if (isAtStop && this.lastAnnouncedStop.get('passenger-arriving') !== nearestStop.id) {
+      this.lastAnnouncedStop.set('passenger-arriving', nearestStop.id);
+      this.announce(`Now arriving at ${nearestStop.name}`);
     }
 
-    // Update popup on blue dot
     if (this.passengerMarker) {
-      const distText = nearestDist < 1000
-        ? `${Math.round(nearestDist)}m`
-        : `${(nearestDist / 1000).toFixed(1)}km`;
+      const distText = nearestDist < 1000 ? `${Math.round(nearestDist)}m` : `${(nearestDist/1000).toFixed(1)}km`;
       this.passengerMarker.setPopupContent(
         `<strong>You are here</strong><br>
-         ${isAtStop ? '📍 At: ' : '🔜 Nearest: '}<strong>${nearestStop.name}</strong><br>
+         ${isAtStop ? '📍 At: ' : '🔜 Nearest stop: '}<strong>${nearestStop.name}</strong><br>
          <small>${distText} away</small>`
       );
+    }
+  }
+
+  private lastGeocodedPos: { lat: number; lon: number } | null = null;
+
+  private async showRealPlaceName(lat: number, lon: number): Promise<void> {
+    // Only re-geocode if moved more than 50m
+    if (this.lastGeocodedPos) {
+      const moved = haversine(lat, lon, this.lastGeocodedPos.lat, this.lastGeocodedPos.lon);
+      if (moved < 50) return;
+    }
+    this.lastGeocodedPos = { lat, lon };
+
+    let banner = document.getElementById('next-stop-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'next-stop-banner';
+      banner.className = 'next-stop-banner';
+      document.querySelector('main')?.insertBefore(banner, document.querySelector('main')!.firstChild);
+    }
+
+    // Show loading state immediately
+    banner.innerHTML = `
+      <div class="nsb-inner">
+        <div class="nsb-current">
+          <span class="nsb-label">Now at</span>
+          <span class="nsb-stop-name" style="color:#94a3b8">Locating...</span>
+        </div>
+        <div class="nsb-next">
+          <span class="nsb-label">Select a route to see stops</span>
+        </div>
+      </div>`;
+
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const data = await res.json();
+
+      // Build a short readable name: building/amenity > road > suburb
+      const a = data.address ?? {};
+      const placeName =
+        a.amenity || a.building || a.university || a.college || a.school ||
+        a.mall || a.hotel || a.hospital ||
+        a.road || a.pedestrian || a.footway ||
+        a.suburb || a.neighbourhood || a.village ||
+        a.town || a.city || 'Unknown location';
+
+      if (this.passengerMarker) {
+        this.passengerMarker.setPopupContent(`<strong>You are here</strong><br>${placeName}`);
+      }
+
+      banner.innerHTML = `
+        <div class="nsb-inner">
+          <div class="nsb-current">
+            <span class="nsb-label">Now at</span>
+            <span class="nsb-stop-name">${placeName}</span>
+          </div>
+          <div class="nsb-next">
+            <span class="nsb-label" style="color:#64748b">Select a route to track stops</span>
+          </div>
+        </div>`;
+    } catch {
+      banner.innerHTML = `
+        <div class="nsb-inner">
+          <div class="nsb-current">
+            <span class="nsb-label">Now at</span>
+            <span class="nsb-stop-name" style="font-size:.85rem;color:#94a3b8">${lat.toFixed(5)}, ${lon.toFixed(5)}</span>
+          </div>
+        </div>`;
     }
   }
 
