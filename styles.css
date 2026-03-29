@@ -882,3 +882,20 @@ footer {
   .nsb-inner { flex-wrap: wrap; }
   .nsb-current { min-width: unset; width: 100%; border-right: none; border-bottom: 1px solid #334155; }
 }
+
+/* ============================================================
+   GPS Status Bar
+   ============================================================ */
+.gps-status {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  color: var(--gray-400);
+  padding: 6px 14px;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}

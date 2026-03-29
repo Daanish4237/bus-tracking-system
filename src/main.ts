@@ -41,6 +41,11 @@ class BusTrackingApp {
   // Current route stops
   private currentStops: Stop[] = [];
 
+  // Passenger GPS tracking
+  private watchId: number | null = null;
+  private passengerMarker: any = null;
+  private passengerPosition: GeolocationPosition | null = null;
+
   constructor() {
     this.stateManager = new StateManager('/api');
     this.stateManager.setErrorCallback((error, context) => this.displayError(error.message, context));
@@ -99,6 +104,9 @@ class BusTrackingApp {
         if (this.stateManager.isTrackingBuses()) this.updateBusLocations();
       }, this.pollingInterval);
 
+      // Start tracking passenger's own GPS
+      this.startPassengerGPS();
+
     } catch (error) {
       this.displayError('Failed to load route details. Please try again.', 'route selection');
     }
@@ -135,6 +143,90 @@ class BusTrackingApp {
     this.moveBusMarkersOnMap(busLocations);
     this.stopSelector.updateBusLocations(busLocations);
     this.updateNextStopBanner(busLocations);
+  }
+
+  // ─── Passenger GPS ───────────────────────────────────────────────────────
+
+  private startPassengerGPS(): void {
+    if (!navigator.geolocation) {
+      this.showGPSStatus('GPS not supported on this device', 'warn');
+      return;
+    }
+
+    // Stop any existing watch
+    if (this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
+
+    this.showGPSStatus('Waiting for GPS...', 'info');
+
+    this.watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        this.passengerPosition = pos;
+        this.onPassengerLocationUpdate(pos);
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          this.showGPSStatus('GPS permission denied — enable location to track your position', 'warn');
+        } else {
+          this.showGPSStatus('GPS signal lost...', 'warn');
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+    );
+  }
+
+  private onPassengerLocationUpdate(pos: GeolocationPosition): void {
+    const { latitude, longitude, accuracy } = pos.coords;
+
+    this.showGPSStatus(`GPS active · ±${Math.round(accuracy)}m`, 'ok');
+
+    // Update passenger marker on map
+    this.updatePassengerMarker(latitude, longitude);
+
+    // Use passenger's location as the "bus" location for stop detection
+    const fakeBus: BusLocation = {
+      busId: 'passenger',
+      routeId: '',
+      latitude,
+      longitude,
+      timestamp: new Date(),
+      speed: pos.coords.speed ? pos.coords.speed * 3.6 : undefined
+    };
+
+    // Update next stop banner using passenger's real position
+    this.updateNextStopBanner([fakeBus]);
+  }
+
+  private updatePassengerMarker(lat: number, lon: number): void {
+    if (!this.map) return;
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:#3b82f6;border-radius:50%;width:18px;height:18px;
+             border:3px solid white;box-shadow:0 0 0 4px rgba(59,130,246,.3)"></div>`,
+      iconSize: [18, 18], iconAnchor: [9, 9]
+    });
+
+    if (this.passengerMarker) {
+      this.passengerMarker.setLatLng([lat, lon]);
+    } else {
+      this.passengerMarker = L.marker([lat, lon], { icon, zIndexOffset: 1000 })
+        .addTo(this.map)
+        .bindPopup('<strong>You are here</strong>');
+      // Pan map to follow passenger on first fix
+      this.map.setView([lat, lon], 15, { animate: true });
+    }
+  }
+
+  private showGPSStatus(msg: string, type: 'ok' | 'warn' | 'info'): void {
+    let el = document.getElementById('gps-status');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'gps-status';
+      el.className = 'gps-status';
+      document.querySelector('main')?.insertBefore(el, document.querySelector('main')!.firstChild);
+    }
+    const colors: Record<string, string> = { ok: '#10b981', warn: '#f59e0b', info: '#6366f1' };
+    el.innerHTML = `<span style="color:${colors[type]}">●</span> ${msg}`;
   }
 
   // ─── Map ──────────────────────────────────────────────────────────────────
@@ -342,6 +434,7 @@ class BusTrackingApp {
   cleanup(): void {
     this.stateManager.stopTrackingBuses();
     this.stateManager.stopPolling();
+    if (this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
   }
 }
 
