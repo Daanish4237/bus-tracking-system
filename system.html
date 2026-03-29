@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bus Tracking System</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Bus Tracking System</h1>
+      <p class="subtitle">Track your bus in real-time</p>
+    </header>
+
+    <main>
+      <!-- Route Viewer Section -->
+      <section class="route-viewer-section">
+        <div class="section-header">
+          <h2>Available Routes</h2>
+        </div>
+        <div id="route-list" class="route-list-container">
+          <!-- Route list will be populated here by RouteViewer -->
+        </div>
+      </section>
+
+      <!-- Route Stops Section -->
+      <section class="route-stops-section">
+        <div id="route-stops" class="route-stops-container">
+          <!-- Route stops will be populated here by RouteViewer -->
+        </div>
+      </section>
+
+      <!-- Stop Selector Section -->
+      <section class="stop-selector-section">
+        <div class="section-header">
+          <h2>Select Your Drop-off Stop</h2>
+        </div>
+        <div id="stop-selector" class="stop-selector-container">
+          <!-- Stop selector will be populated here by StopSelector -->
+        </div>
+      </section>
+
+      <!-- Bus Tracker Section -->
+      <section class="bus-tracker-section">
+        <div class="section-header">
+          <h2>Live Bus Tracking</h2>
+        </div>
+        <div id="bus-tracker" class="bus-tracker-container">
+          <!-- Bus tracker will be populated here by BusTrackerDisplay -->
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>&copy; 2024 Bus Tracking System. All rights reserved.</p>
+    </footer>
+  </div>
+
+  <!-- Application Scripts -->
+  <script type="module" src="src/main.ts"></script>
+</body>
+</html>
