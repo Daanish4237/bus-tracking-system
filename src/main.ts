@@ -144,6 +144,30 @@ class BusTrackingApp {
     const stop = this.stateManager.getStop(stopId);
     if (stop) {
       console.log(`Drop-off stop set to: ${stop.name} (${stop.address})`);
+
+      // Pan map to selected stop and show a popup
+      if (this.map) {
+        this.map.setView([stop.latitude, stop.longitude], 16, { animate: true });
+
+        // Remove previous selected stop marker if any
+        if ((this as any)._selectedStopMarker) {
+          (this as any)._selectedStopMarker.remove();
+        }
+
+        const selectedIcon = (window as any).L.divIcon({
+          className: '',
+          html: '<div style="background:#10b981;color:white;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.5)">📍</div>',
+          iconSize: [34, 34],
+          iconAnchor: [17, 17]
+        });
+
+        const marker = (window as any).L.marker([stop.latitude, stop.longitude], { icon: selectedIcon })
+          .addTo(this.map)
+          .bindPopup(`<strong>Your stop: ${stop.name}</strong><br>${stop.address}`)
+          .openPopup();
+
+        (this as any)._selectedStopMarker = marker;
+      }
     }
   }
 
