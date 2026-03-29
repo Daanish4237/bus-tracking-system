@@ -10,9 +10,9 @@
     "skipLibCheck": true
   },
   "include": [
-    "./**/*",
-    "../src/backend/**/*",
-    "../src/shared/**/*"
+    "index.ts",
+    "../src/backend/**/*.ts",
+    "../src/shared/**/*.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts"]
 }
