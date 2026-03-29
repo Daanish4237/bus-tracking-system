@@ -12,6 +12,9 @@ dist/
 # IDE
 .vscode/
 .idea/
+
+# VS Code extensions folder (not part of the project)
+extensions/
 *.swp
 *.swo
 
