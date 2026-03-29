@@ -7,7 +7,8 @@ export default defineConfig({
     outDir: 'dist/frontend',
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'system.html')
+        main: resolve(__dirname, 'system.html'),
+        driver: resolve(__dirname, 'driver.html')
       }
     }
   },

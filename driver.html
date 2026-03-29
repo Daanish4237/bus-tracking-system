@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bus Driver — GPS Tracker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 16px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 40px rgba(0,0,0,.4);
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1.5px solid #334155;
+      border-radius: 8px;
+      color: #f1f5f9;
+      font-size: 0.95rem;
+      margin-bottom: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    select:focus, input:focus { border-color: #6366f1; }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-start {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      box-shadow: 0 4px 12px rgba(16,185,129,.3);
+    }
+
+    .btn-start:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16,185,129,.4); }
+
+    .btn-stop {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+      box-shadow: 0 4px 12px rgba(239,68,68,.3);
+      margin-top: 10px;
+    }
+
+    .btn-stop:hover { transform: translateY(-2px); }
+
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .status-box {
+      margin-top: 20px;
+      padding: 14px;
+      background: #0f172a;
+      border-radius: 10px;
+      border: 1.5px solid #334155;
+      display: none;
+    }
+
+    .status-box.visible { display: block; }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      padding: 4px 0;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    .status-row:last-child { border-bottom: none; }
+
+    .status-label { color: #94a3b8; }
+    .status-value { font-weight: 600; font-family: monospace; }
+
+    .pulse {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: pulse 1.5s infinite;
+      margin-right: 6px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.3); }
+    }
+
+    .log {
+      margin-top: 16px;
+      max-height: 140px;
+      overflow-y: auto;
+      font-size: 0.78rem;
+      color: #64748b;
+      font-family: monospace;
+    }
+
+    .log-entry { padding: 2px 0; }
+    .log-entry.ok { color: #10b981; }
+    .log-entry.err { color: #ef4444; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #334155;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚌 Driver GPS Tracker</h1>
+    <p class="subtitle">Your location will be shared with passengers in real-time</p>
+
+    <label for="busSelect">Bus ID</label>
+    <select id="busSelect">
+      <option value="bus-541">bus-541 — Bus 541 (Kinrara → Putra Permai)</option>
+      <option value="bus-001">bus-001 — Downtown Express</option>
+      <option value="bus-002">bus-002 — Uptown Local</option>
+      <option value="bus-003">bus-003 — Crosstown Shuttle</option>
+    </select>
+
+    <label for="routeSelect">Route</label>
+    <select id="routeSelect">
+      <option value="route-541">route-541 — Bus 541</option>
+      <option value="route-101">route-101 — Downtown Express</option>
+      <option value="route-202">route-202 — Uptown Local</option>
+      <option value="route-303">route-303 — Crosstown Shuttle</option>
+    </select>
+
+    <label for="speedInput">Speed (km/h) — optional override</label>
+    <input type="number" id="speedInput" placeholder="Auto-detect from GPS" min="0" max="120">
+
+    <button class="btn btn-start" id="startBtn" onclick="startTracking()">
+      📍 Start Sharing Location
+    </button>
+    <button class="btn btn-stop" id="stopBtn" onclick="stopTracking()" style="display:none">
+      ⏹ Stop Sharing
+    </button>
+
+    <div class="status-box" id="statusBox">
+      <div class="status-row">
+        <span class="status-label">Status</span>
+        <span class="status-value" id="statusText"><span class="pulse"></span>Tracking...</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Latitude</span>
+        <span class="status-value" id="latText">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Longitude</span>
+        <span class="status-value" id="lonText">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Accuracy</span>
+        <span class="status-value" id="accText">—</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Last update</span>
+        <span class="status-value" id="lastUpdate">—</span>
+      </div>
+    </div>
+
+    <div class="log" id="log"></div>
+  </div>
+
+  <script>
+    let watchId = null;
+    let intervalId = null;
+    let lastPosition = null;
+
+    function log(msg, type = 'ok') {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.prepend(entry);
+      // Keep only last 20 entries
+      while (logEl.children.length > 20) logEl.removeChild(logEl.lastChild);
+    }
+
+    function startTracking() {
+      if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser/device.');
+        return;
+      }
+
+      document.getElementById('startBtn').style.display = 'none';
+      document.getElementById('stopBtn').style.display = 'flex';
+      document.getElementById('statusBox').classList.add('visible');
+
+      log('Starting GPS tracking...');
+
+      // Watch position continuously
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          lastPosition = pos;
+          document.getElementById('latText').textContent = pos.coords.latitude.toFixed(6);
+          document.getElementById('lonText').textContent = pos.coords.longitude.toFixed(6);
+          document.getElementById('accText').textContent = `±${Math.round(pos.coords.accuracy)}m`;
+        },
+        (err) => {
+          log(`GPS error: ${err.message}`, 'err');
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+
+      // Push to API every 5 seconds
+      intervalId = setInterval(pushLocation, 5000);
+      // Push immediately on first fix
+      setTimeout(pushLocation, 1000);
+    }
+
+    async function pushLocation() {
+      if (!lastPosition) {
+        log('Waiting for GPS fix...', 'err');
+        return;
+      }
+
+      const busId = document.getElementById('busSelect').value;
+      const routeId = document.getElementById('routeSelect').value;
+      const speedOverride = document.getElementById('speedInput').value;
+      const speed = speedOverride ? parseFloat(speedOverride) : (lastPosition.coords.speed ? lastPosition.coords.speed * 3.6 : 30);
+
+      try {
+        const res = await fetch(`/api/buses/${busId}/location`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: lastPosition.coords.latitude,
+            longitude: lastPosition.coords.longitude,
+            routeId,
+            speed,
+            heading: lastPosition.coords.heading || 0,
+            timestamp: new Date().toISOString()
+          })
+        });
+
+        if (res.ok) {
+          document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+          log(`✓ Location sent (${lastPosition.coords.latitude.toFixed(5)}, ${lastPosition.coords.longitude.toFixed(5)})`);
+        } else {
+          log(`Server error: ${res.status}`, 'err');
+        }
+      } catch (e) {
+        log(`Network error: ${e.message}`, 'err');
+      }
+    }
+
+    function stopTracking() {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (intervalId !== null) clearInterval(intervalId);
+      watchId = null;
+      intervalId = null;
+      lastPosition = null;
+
+      document.getElementById('startBtn').style.display = 'flex';
+      document.getElementById('stopBtn').style.display = 'none';
+      document.getElementById('statusBox').classList.remove('visible');
+      log('Tracking stopped.');
+    }
+  </script>
+</body>
+</html>
