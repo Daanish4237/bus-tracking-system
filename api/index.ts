@@ -151,4 +151,21 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
+// POST /api/stops/:stopId/request — passenger requests a stop
+const stopRequests = new Map<string, { stopId: string; timestamp: Date; count: number }>();
+
+app.post('/api/stops/:stopId/request', (req: Request, res: Response) => {
+  const stopId = req.params['stopId'] as string;
+  if (!stops.has(stopId)) { res.status(404).json({ error: 'Stop not found' }); return; }
+  const existing = stopRequests.get(stopId);
+  if (existing) {
+    existing.count++;
+    existing.timestamp = new Date();
+  } else {
+    stopRequests.set(stopId, { stopId, timestamp: new Date(), count: 1 });
+  }
+  const stop = stops.get(stopId)!;
+  res.json({ success: true, message: `Stop request sent for ${stop.name}`, requests: stopRequests.get(stopId)!.count });
+});
+
 export default app;

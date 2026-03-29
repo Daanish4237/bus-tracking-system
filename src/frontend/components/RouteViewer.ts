@@ -85,8 +85,18 @@ export class RouteViewer {
       routeContent.appendChild(routeName);
       routeItem.appendChild(routeContent);
 
-      // Add click handler
-      routeItem.addEventListener('click', () => {
+      // Add click handler with ripple
+      routeItem.addEventListener('click', (e) => {
+        // Ripple effect
+        const ripple = document.createElement('span');
+        ripple.className = 'ripple';
+        const rect = routeItem.getBoundingClientRect();
+        const size = Math.max(rect.width, rect.height);
+        ripple.style.width = ripple.style.height = `${size}px`;
+        ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+        ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+        routeItem.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 600);
         this.onRouteSelected(route.id);
       });
 

@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bus Tracking System</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
   <div class="container">
@@ -49,6 +51,14 @@
         <div id="bus-tracker" class="bus-tracker-container">
           <!-- Bus tracker will be populated here by BusTrackerDisplay -->
         </div>
+      </section>
+
+      <!-- Map Section -->
+      <section class="map-section">
+        <div class="section-header">
+          <h2>Route Map</h2>
+        </div>
+        <div id="route-map" class="route-map-container"></div>
       </section>
     </main>
 

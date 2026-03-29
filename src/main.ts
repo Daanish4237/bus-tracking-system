@@ -1,6 +1,5 @@
 /**
  * Main Application Entry Point
- * Initializes and wires together all components of the Bus Tracking System
  */
 
 import { StateManager } from './frontend/state/StateManager';
@@ -8,17 +7,19 @@ import { RouteViewer } from './frontend/components/RouteViewer';
 import { StopSelector } from './frontend/components/StopSelector';
 import { BusTrackerDisplay } from './frontend/components/BusTrackerDisplay';
 
-/**
- * Main Application Class
- * Coordinates all components and manages the application lifecycle
- */
+// Leaflet is loaded via CDN in system.html
+declare const L: any;
+
 class BusTrackingApp {
   private stateManager: StateManager;
   private routeViewer: RouteViewer;
   private stopSelector: StopSelector;
   private busTrackerDisplay: BusTrackerDisplay;
-  private pollingInterval: number = 10000; // 10 seconds (requirement: within 10 seconds)
+  private pollingInterval: number = 10000;
   private errorDisplayElement: HTMLElement | null = null;
+  private map: any = null;
+  private mapMarkers: any[] = [];
+  private busMarkers: Map<string, any> = new Map();
 
   constructor() {
     // Initialize State Manager with API base URL
@@ -106,6 +107,10 @@ class BusTrackingApp {
       // Set stops in bus tracker for status calculation
       this.busTrackerDisplay.setStops(stops);
 
+      // Update map with route stops
+      this.initMap();
+      this.updateMap(stops);
+
       // Start tracking buses on this route
       this.stateManager.startTrackingBuses(routeId);
 
@@ -167,17 +172,80 @@ class BusTrackingApp {
       // Display buses in the tracker
       this.busTrackerDisplay.displayBuses(busLocations);
 
+      // Update bus markers on map
+      this.updateBusMarkers(busLocations);
+
       console.log(`Updated ${busLocations.length} bus location(s)`);
     } catch (error) {
       console.error('Error updating bus locations:', error);
     }
   }
 
-  /**
-   * Start periodic updates for bus locations
-   * Updates the UI every polling interval
-   */
-  private startPeriodicUpdates(): void {
+  private initMap(): void {
+    if (this.map) return;
+    const mapEl = document.getElementById('route-map');
+    if (!mapEl) return;
+    mapEl.innerHTML = '';
+    this.map = L.map('route-map').setView([40.758, -73.985], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19
+    }).addTo(this.map);
+  }
+
+  private updateMap(stops: Array<{ id: string; name: string; latitude: number; longitude: number }>): void {
+    if (!this.map) this.initMap();
+    if (!this.map) return;
+
+    // Clear existing stop markers
+    this.mapMarkers.forEach(m => m.remove());
+    this.mapMarkers = [];
+
+    if (stops.length === 0) return;
+
+    const stopIcon = L.divIcon({
+      className: '',
+      html: '<div style="background:#4f46e5;color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)">🚏</div>',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+
+    const bounds: [number, number][] = [];
+    stops.forEach((stop, i) => {
+      const marker = L.marker([stop.latitude, stop.longitude], { icon: stopIcon })
+        .addTo(this.map)
+        .bindPopup(`<strong>${i + 1}. ${stop.name}</strong>`);
+      this.mapMarkers.push(marker);
+      bounds.push([stop.latitude, stop.longitude]);
+    });
+
+    // Draw route line
+    const polyline = L.polyline(bounds, { color: '#4f46e5', weight: 3, opacity: 0.7, dashArray: '6,4' }).addTo(this.map);
+    this.mapMarkers.push(polyline);
+    this.map.fitBounds(bounds, { padding: [30, 30] });
+  }
+
+  private updateBusMarkers(buses: Array<{ busId: string; latitude: number; longitude: number }>): void {
+    if (!this.map) return;
+
+    // Remove old bus markers
+    this.busMarkers.forEach(m => m.remove());
+    this.busMarkers.clear();
+
+    const busIcon = L.divIcon({
+      className: '',
+      html: '<div style="background:#f59e0b;color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,.4)">🚌</div>',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    buses.forEach(bus => {
+      const marker = L.marker([bus.latitude, bus.longitude], { icon: busIcon })
+        .addTo(this.map)
+        .bindPopup(`<strong>Bus ${bus.busId}</strong>`);
+      this.busMarkers.set(bus.busId, marker);
+    });
+  }
     // Set up interval to update UI with latest bus locations
     setInterval(() => {
       if (this.stateManager.isTrackingBuses()) {

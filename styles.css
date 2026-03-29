@@ -635,3 +635,116 @@ footer {
   header h1 { font-size: 1.8rem; }
   header { padding: 28px 20px; }
 }
+
+/* ============================================================
+   Ripple Animation
+   ============================================================ */
+.route-item,
+.selectable-stop-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: ripple-effect 0.5s linear;
+  background: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+@keyframes ripple-effect {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* ============================================================
+   Request Stop Button
+   ============================================================ */
+.request-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 20px;
+  width: 100%;
+  background: linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(79,70,229,.3);
+  justify-content: center;
+}
+
+.request-stop-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(79,70,229,.4);
+}
+
+.request-stop-btn:active { transform: translateY(0); }
+
+.request-stop-btn:disabled {
+  background: var(--gray-200);
+  color: var(--gray-400);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.request-stop-toast {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: slideDown 0.3s ease;
+}
+
+.request-stop-toast.success {
+  background: var(--success-light);
+  border: 1.5px solid #6ee7b7;
+  color: #065f46;
+}
+
+.request-stop-toast.error {
+  background: var(--danger-light);
+  border: 1.5px solid #fca5a5;
+  color: #991b1b;
+}
+
+/* ============================================================
+   Map Section
+   ============================================================ */
+.map-section {
+  grid-column: 1 / -1;
+}
+
+.route-map-container {
+  height: 380px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1.5px solid var(--gray-200);
+  background: var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-400);
+  font-size: 0.95rem;
+}
+
+.route-map-container .leaflet-container {
+  height: 100%;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 768px) {
+  .map-section { grid-column: 1; }
+}

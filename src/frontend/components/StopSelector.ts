@@ -1,7 +1,5 @@
 /**
  * Stop Selector Component
- * Allows passengers to select their desired drop-off stop
- * Provides visual feedback for selection and maintains single selection invariant
  */
 
 import { Stop } from '../../shared/types';
@@ -16,34 +14,15 @@ export class StopSelector {
   private selectedStopId: string | null = null;
   private currentStops: Stop[] = [];
 
-  /**
-   * Create a new StopSelector instance
-   * @param containerElementId - ID of the HTML element to display selectable stops
-   * @param callbacks - Callback functions for stop selection
-   */
-  constructor(
-    containerElementId: string,
-    callbacks: StopSelectorCallbacks = {}
-  ) {
-    const containerEl = document.getElementById(containerElementId);
-
-    if (!containerEl) {
-      throw new Error(`Element with id "${containerElementId}" not found`);
-    }
-
-    this.containerElement = containerEl;
+  constructor(containerElementId: string, callbacks: StopSelectorCallbacks = {}) {
+    const el = document.getElementById(containerElementId);
+    if (!el) throw new Error(`Element with id "${containerElementId}" not found`);
+    this.containerElement = el;
     this.callbacks = callbacks;
   }
 
-  /**
-   * Display selectable stops
-   * @param stops - Array of stops to display as selectable options
-   */
   displayStops(stops: Stop[]): void {
-    // Store current stops
     this.currentStops = stops;
-
-    // Clear existing content
     this.containerElement.innerHTML = '';
 
     if (stops.length === 0) {
@@ -51,13 +30,11 @@ export class StopSelector {
       return;
     }
 
-    // Create instruction text
     const instruction = document.createElement('p');
     instruction.className = 'stop-selector-instruction';
     instruction.textContent = 'Click on a stop to select it as your drop-off location:';
     this.containerElement.appendChild(instruction);
 
-    // Create stops list
     const stopsList = document.createElement('ul');
     stopsList.className = 'selectable-stops-list';
 
@@ -65,13 +42,8 @@ export class StopSelector {
       const stopItem = document.createElement('li');
       stopItem.className = 'selectable-stop-item';
       stopItem.dataset.stopId = stop.id;
+      if (this.selectedStopId === stop.id) stopItem.classList.add('selected');
 
-      // Add selected class if this is the selected stop
-      if (this.selectedStopId === stop.id) {
-        stopItem.classList.add('selected');
-      }
-
-      // Create stop content
       const stopContent = document.createElement('div');
       stopContent.className = 'selectable-stop-content';
 
@@ -92,8 +64,9 @@ export class StopSelector {
       stopContent.appendChild(stopAddress);
       stopItem.appendChild(stopContent);
 
-      // Add click handler
-      stopItem.addEventListener('click', () => {
+      // Ripple effect on click
+      stopItem.addEventListener('click', (e) => {
+        this.addRipple(stopItem, e);
         this.onStopSelected(stop.id);
       });
 
@@ -102,21 +75,12 @@ export class StopSelector {
 
     this.containerElement.appendChild(stopsList);
 
-    // Display selected stop info if there is one
-    if (this.selectedStopId) {
-      this.displaySelectedStopInfo();
-    }
+    if (this.selectedStopId) this.displaySelectedStopInfo();
   }
 
-  /**
-   * Handle stop selection
-   * @param stopId - ID of the selected stop
-   */
   onStopSelected(stopId: string): void {
-    // Update selected stop ID (maintains single selection invariant)
     this.selectedStopId = stopId;
 
-    // Update visual selection in the stops list
     const stopItems = this.containerElement.querySelectorAll('.selectable-stop-item');
     stopItems.forEach(item => {
       if (item instanceof HTMLElement && item.dataset.stopId === stopId) {
@@ -126,36 +90,32 @@ export class StopSelector {
       }
     });
 
-    // Display selected stop info
     this.displaySelectedStopInfo();
 
-    // Call callback if provided
-    if (this.callbacks.onStopSelected) {
-      this.callbacks.onStopSelected(stopId);
-    }
+    if (this.callbacks.onStopSelected) this.callbacks.onStopSelected(stopId);
   }
 
-  /**
-   * Display information about the currently selected stop
-   */
+  private addRipple(el: HTMLElement, e: MouseEvent): void {
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    const rect = el.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height);
+    ripple.style.width = ripple.style.height = `${size}px`;
+    ripple.style.left = `${e.clientX - rect.left - size / 2}px`;
+    ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
+    el.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  }
+
   private displaySelectedStopInfo(): void {
-    // Remove existing selected stop info if present
     const existingInfo = this.containerElement.querySelector('.selected-stop-info');
-    if (existingInfo) {
-      existingInfo.remove();
-    }
+    if (existingInfo) existingInfo.remove();
 
-    if (!this.selectedStopId) {
-      return;
-    }
+    if (!this.selectedStopId) return;
 
-    // Find the selected stop
-    const selectedStop = this.currentStops.find(stop => stop.id === this.selectedStopId);
-    if (!selectedStop) {
-      return;
-    }
+    const selectedStop = this.currentStops.find(s => s.id === this.selectedStopId);
+    if (!selectedStop) return;
 
-    // Create selected stop info display
     const infoContainer = document.createElement('div');
     infoContainer.className = 'selected-stop-info';
 
@@ -166,54 +126,81 @@ export class StopSelector {
     const infoContent = document.createElement('div');
     infoContent.className = 'selected-stop-details';
 
-    const stopName = document.createElement('p');
-    stopName.className = 'selected-stop-name-display';
-    stopName.innerHTML = `<strong>${selectedStop.name}</strong>`;
+    const nameEl = document.createElement('p');
+    nameEl.className = 'selected-stop-name-display';
+    nameEl.innerHTML = `<strong>${selectedStop.name}</strong>`;
 
-    const stopAddress = document.createElement('p');
-    stopAddress.className = 'selected-stop-address-display';
-    stopAddress.textContent = selectedStop.address;
+    const addrEl = document.createElement('p');
+    addrEl.className = 'selected-stop-address-display';
+    addrEl.textContent = selectedStop.address;
 
-    infoContent.appendChild(stopName);
-    infoContent.appendChild(stopAddress);
+    infoContent.appendChild(nameEl);
+    infoContent.appendChild(addrEl);
+
+    const requestBtn = document.createElement('button');
+    requestBtn.className = 'request-stop-btn';
+    requestBtn.innerHTML = `🔔 Request Stop at ${selectedStop.name}`;
+    requestBtn.addEventListener('click', () =>
+      this.requestStop(selectedStop.id, selectedStop.name, requestBtn, infoContainer)
+    );
 
     infoContainer.appendChild(infoHeader);
     infoContainer.appendChild(infoContent);
+    infoContainer.appendChild(requestBtn);
 
-    // Add to container
     this.containerElement.appendChild(infoContainer);
   }
 
-  /**
-   * Get currently selected stop ID
-   * @returns Selected stop ID or null if none selected
-   */
+  private async requestStop(
+    stopId: string,
+    stopName: string,
+    btn: HTMLButtonElement,
+    container: HTMLElement
+  ): Promise<void> {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Sending request...';
+
+    const existing = container.querySelector('.request-stop-toast');
+    if (existing) existing.remove();
+
+    try {
+      const res = await fetch(`/api/stops/${stopId}/request`, { method: 'POST' });
+      const data = await res.json();
+
+      const toast = document.createElement('div');
+      toast.className = 'request-stop-toast success';
+      toast.innerHTML = `✅ ${data.message}`;
+      container.appendChild(toast);
+
+      btn.innerHTML = '✅ Stop Requested';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = `🔔 Request Stop at ${stopName}`;
+        toast.remove();
+      }, 5000);
+    } catch {
+      const toast = document.createElement('div');
+      toast.className = 'request-stop-toast error';
+      toast.innerHTML = '❌ Failed to send request. Please try again.';
+      container.appendChild(toast);
+      btn.disabled = false;
+      btn.innerHTML = `🔔 Request Stop at ${stopName}`;
+    }
+  }
+
   getSelectedStop(): string | null {
     return this.selectedStopId;
   }
 
-  /**
-   * Clear the current selection
-   */
   clearSelection(): void {
     this.selectedStopId = null;
-
-    // Remove selected class from all stop items
-    const stopItems = this.containerElement.querySelectorAll('.selectable-stop-item');
-    stopItems.forEach(item => {
+    this.containerElement.querySelectorAll('.selectable-stop-item').forEach(item => {
       item.classList.remove('selected');
     });
-
-    // Remove selected stop info display
     const existingInfo = this.containerElement.querySelector('.selected-stop-info');
-    if (existingInfo) {
-      existingInfo.remove();
-    }
+    if (existingInfo) existingInfo.remove();
   }
 
-  /**
-   * Clear the stops display
-   */
   clearStops(): void {
     this.containerElement.innerHTML = '';
     this.selectedStopId = null;
