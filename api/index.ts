@@ -90,8 +90,8 @@ app.get('/api/routes', (_req: Request, res: Response) => {
 
 // GET /api/routes/:routeId
 app.get('/api/routes/:routeId', (req: Request, res: Response) => {
-  const route = routes.get(req.params.routeId);
-  if (!route) return res.status(404).json({ error: 'Route not found' });
+  const route = routes.get(req.params['routeId'] as string);
+  if (!route) { res.status(404).json({ error: 'Route not found' }); return; }
   const routeStops = route.stopIds.map((id, i) => {
     const s = stops.get(id);
     return s ? { ...s, sequenceNumber: i + 1 } : null;
@@ -101,24 +101,26 @@ app.get('/api/routes/:routeId', (req: Request, res: Response) => {
 
 // GET /api/stops
 app.get('/api/stops', (req: Request, res: Response) => {
-  const { ids } = req.query;
-  if (!ids || typeof ids !== 'string') return res.status(400).json({ error: 'ids query param required' });
-  const result = ids.split(',').map(id => stops.get(id.trim())).filter(Boolean);
+  const ids = req.query['ids'];
+  const idsStr = Array.isArray(ids) ? ids[0] : ids;
+  if (!idsStr || typeof idsStr !== 'string') { res.status(400).json({ error: 'ids query param required' }); return; }
+  const result = idsStr.split(',').map(id => stops.get(id.trim())).filter(Boolean);
   res.json(result);
 });
 
 // GET /api/stops/:stopId
 app.get('/api/stops/:stopId', (req: Request, res: Response) => {
-  const stop = stops.get(req.params.stopId);
-  if (!stop) return res.status(404).json({ error: 'Stop not found' });
+  const stop = stops.get(req.params['stopId'] as string);
+  if (!stop) { res.status(404).json({ error: 'Stop not found' }); return; }
   res.json(stop);
 });
 
 // GET /api/buses/locations
 app.get('/api/buses/locations', (req: Request, res: Response) => {
-  const { routeId } = req.query;
-  if (!routeId || typeof routeId !== 'string') return res.status(400).json({ error: 'routeId required' });
-  if (!routes.has(routeId)) return res.status(404).json({ error: 'Route not found' });
+  const routeIdParam = req.query['routeId'];
+  const routeId = Array.isArray(routeIdParam) ? routeIdParam[0] : routeIdParam;
+  if (!routeId || typeof routeId !== 'string') { res.status(400).json({ error: 'routeId required' }); return; }
+  if (!routes.has(routeId)) { res.status(404).json({ error: 'Route not found' }); return; }
   const now = Date.now();
   const result = Array.from(busLocations.values()).filter(b =>
     b.routeId === routeId && (now - b.timestamp.getTime()) <= STALE_MS
@@ -128,17 +130,17 @@ app.get('/api/buses/locations', (req: Request, res: Response) => {
 
 // GET /api/buses/:busId/location
 app.get('/api/buses/:busId/location', (req: Request, res: Response) => {
-  const loc = busLocations.get(req.params.busId);
-  if (!loc) return res.status(404).json({ error: 'Bus not found' });
+  const loc = busLocations.get(req.params['busId'] as string);
+  if (!loc) { res.status(404).json({ error: 'Bus not found' }); return; }
   res.json(loc);
 });
 
 // POST /api/buses/:busId/location
 app.post('/api/buses/:busId/location', (req: Request, res: Response) => {
-  const { busId } = req.params;
+  const busId = req.params['busId'] as string;
   const { latitude, longitude, routeId, timestamp, speed, heading } = req.body;
-  if (!isValidGPS(latitude, longitude)) return res.status(400).json({ error: 'Invalid GPS coordinates' });
-  if (!routes.has(routeId)) return res.status(404).json({ error: 'Route not found' });
+  if (!isValidGPS(latitude, longitude)) { res.status(400).json({ error: 'Invalid GPS coordinates' }); return; }
+  if (!routes.has(routeId)) { res.status(404).json({ error: 'Route not found' }); return; }
   const loc: BusLocation = { busId, routeId, latitude, longitude, timestamp: timestamp ? new Date(timestamp) : new Date(), speed, heading };
   busLocations.set(busId, loc);
   res.json({ success: true, location: loc });
