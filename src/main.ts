@@ -182,7 +182,21 @@ class BusTrackingApp {
     // Update passenger marker on map
     this.updatePassengerMarker(latitude, longitude);
 
-    // Use passenger's location as the "bus" location for stop detection
+    if (this.currentStops.length === 0) return;
+
+    // Find nearest stop regardless of distance
+    let nearestStop = this.currentStops[0];
+    let nearestDist = Infinity;
+    this.currentStops.forEach(stop => {
+      const d = haversine(latitude, longitude, stop.latitude, stop.longitude);
+      if (d < nearestDist) { nearestDist = d; nearestStop = stop; }
+    });
+
+    // Find next stop after nearest
+    const nearestIdx = this.currentStops.indexOf(nearestStop);
+    const nextStop = this.currentStops[nearestIdx + 1] ?? null;
+
+    // Always show banner with nearest stop info
     const fakeBus: BusLocation = {
       busId: 'passenger',
       routeId: '',
@@ -192,8 +206,93 @@ class BusTrackingApp {
       speed: pos.coords.speed ? pos.coords.speed * 3.6 : undefined
     };
 
-    // Update next stop banner using passenger's real position
-    this.updateNextStopBanner([fakeBus]);
+    // Show banner — use proximity threshold only for "Now at" vs "Near"
+    const isAtStop = nearestDist <= 100;
+    this.showNextStopBannerDirect(
+      isAtStop ? nearestStop : null,
+      isAtStop ? nextStop : nearestStop,
+      fakeBus,
+      nearestDist
+    );
+
+    // Voice announcement when within 300m of next stop
+    if (nextStop) {
+      const distToNext = haversine(latitude, longitude, nextStop.latitude, nextStop.longitude);
+      const lastAnnounced = this.lastAnnouncedStop.get('passenger-next');
+      if (distToNext <= 300 && lastAnnounced !== nextStop.id) {
+        this.lastAnnouncedStop.set('passenger-next', nextStop.id);
+        this.announce(`Next stop: ${nextStop.name}`);
+      }
+    }
+
+    if (isAtStop) {
+      const lastArriving = this.lastAnnouncedStop.get('passenger-arriving');
+      if (lastArriving !== nearestStop.id) {
+        this.lastAnnouncedStop.set('passenger-arriving', nearestStop.id);
+        this.announce(`Now arriving at ${nearestStop.name}`);
+      }
+    }
+
+    // Update popup on blue dot
+    if (this.passengerMarker) {
+      const distText = nearestDist < 1000
+        ? `${Math.round(nearestDist)}m`
+        : `${(nearestDist / 1000).toFixed(1)}km`;
+      this.passengerMarker.setPopupContent(
+        `<strong>You are here</strong><br>
+         ${isAtStop ? '📍 At: ' : '🔜 Nearest: '}<strong>${nearestStop.name}</strong><br>
+         <small>${distText} away</small>`
+      );
+    }
+  }
+
+  private showNextStopBannerDirect(
+    currentStop: Stop | null,
+    nextStop: Stop | null,
+    bus: BusLocation,
+    nearestDist: number
+  ): void {
+    let banner = document.getElementById('next-stop-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'next-stop-banner';
+      banner.className = 'next-stop-banner';
+      const main = document.querySelector('main');
+      if (main) main.insertBefore(banner, main.firstChild);
+    }
+
+    const nextDist = nextStop
+      ? Math.round(haversine(bus.latitude, bus.longitude, nextStop.latitude, nextStop.longitude))
+      : null;
+
+    const distText = (d: number) => d < 1000 ? `${d}m` : `${(d/1000).toFixed(1)}km`;
+
+    banner.innerHTML = `
+      <div class="nsb-inner">
+        ${currentStop ? `
+          <div class="nsb-current">
+            <span class="nsb-label">Now at</span>
+            <span class="nsb-stop-name">${currentStop.name}</span>
+          </div>` : `
+          <div class="nsb-current">
+            <span class="nsb-label">Nearest stop</span>
+            <span class="nsb-stop-name" style="color:#94a3b8;font-size:.9rem">${nextStop?.name ?? '—'}</span>
+            <span class="nsb-dist">${distText(Math.round(nearestDist))}</span>
+          </div>`}
+        ${nextStop ? `
+          <div class="nsb-next">
+            <span class="nsb-label">Next stop</span>
+            <span class="nsb-stop-name nsb-next-name">${nextStop.name}</span>
+            ${nextDist !== null ? `<span class="nsb-dist">${distText(nextDist)} away</span>` : ''}
+          </div>` : `<div class="nsb-next"><span class="nsb-label" style="color:#10b981">End of route</span></div>`}
+        <button class="nsb-voice-btn" onclick="window.__announceNext && window.__announceNext()" title="Hear announcement">🔊</button>
+      </div>
+    `;
+
+    (window as any).__announceNext = () => {
+      if (nextStop) this.announce(`Next stop: ${nextStop.name}`);
+      else if (currentStop) this.announce(`Now arriving at ${currentStop.name}`);
+    };
   }
 
   private updatePassengerMarker(lat: number, lon: number): void {
