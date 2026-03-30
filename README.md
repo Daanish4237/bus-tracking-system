@@ -155,6 +155,6 @@ This system validates all requirements specified in the design document:
 - ✅ Requirement 6: User Interface Responsiveness
 - ✅ Requirement 7: GPS Data Accuracy
 
-## License
+## Author
 
-Copyright © 2024 Bus Tracking System. All rights reserved.
+Daanish
