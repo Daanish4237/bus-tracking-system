@@ -31,9 +31,9 @@ export function seed(): void {
     { id: 'stop-303-5', name: 'East Side Plaza',     latitude: 40.7489, longitude: -73.9680, address: '1100 Lexington Ave',     createdAt: now, updatedAt: now },
 
     // Bus 541 — Kinrara / Puncak Jalil / Lestari Perdana
-    { id: 's541-01', name: 'LRT Kinrara BK5 (Sj398)',                       latitude: 3.0498, longitude: 101.6412, address: 'LRT Kinrara BK5, Bandar Kinrara, Puchong',            createdAt: now, updatedAt: now },
-    { id: 's541-02', name: 'Kinrara Cricket Academy (Sj399)',                latitude: 3.0478, longitude: 101.6435, address: 'Kinrara Cricket Academy, Bandar Kinrara',             createdAt: now, updatedAt: now },
-    { id: 's541-03', name: 'SMK Seksyen 4 Bandar Kinrara Opp (Sj397)',      latitude: 3.0460, longitude: 101.6455, address: 'SMK Seksyen 4, Bandar Kinrara, Puchong',              createdAt: now, updatedAt: now },
+    { id: 's541-01', name: 'LRT Kinrara BK5',                                latitude: 3.05046, longitude: 101.64427, address: 'LRT Kinrara BK5, Bandar Kinrara, Puchong',          createdAt: now, updatedAt: now },
+    { id: 's541-02', name: 'SMK SEKSYEN 4 BANDAR KINRARA',                   latitude: 3.04603, longitude: 101.64575, address: 'SMK Seksyen 4, Bandar Kinrara, Puchong',            createdAt: now, updatedAt: now },
+    { id: 's541-03', name: 'KINRARA GOLF CLUB (BARAT)',                      latitude: 3.03727, longitude: 101.65484, address: 'Jalan Kinrara, Bandar Kinrara, Puchong',            createdAt: now, updatedAt: now },
     { id: 's541-04', name: 'Kinrara Golf Club (Tengah)',                     latitude: 3.0430, longitude: 101.6480, address: 'Kinrara Golf Club, Bandar Kinrara',                   createdAt: now, updatedAt: now },
     { id: 's541-05', name: 'Kinrara Golf Club (Timur) (Sj365)',              latitude: 3.0415, longitude: 101.6510, address: 'Kinrara Golf Club East, Bandar Kinrara',              createdAt: now, updatedAt: now },
     { id: 's541-06', name: 'Duet Residence Opp (Sj367)',                     latitude: 3.0395, longitude: 101.6535, address: 'Duet Residence, Bandar Kinrara',                      createdAt: now, updatedAt: now },

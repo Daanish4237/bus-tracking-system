@@ -29,6 +29,8 @@ class BusTrackingApp {
   private banner = new NextStopBanner();
 
   private currentStops: Stop[] = [];
+  private currentRouteId = '';
+  private currentStopIndex = 0; // tracks progress along the route
   private pollingInterval = 5000;
   private errorEl: HTMLElement | null = null;
 
@@ -71,6 +73,8 @@ class BusTrackingApp {
       await this.stateManager.selectRoute(routeId);
       const stops = this.stateManager.getStopsForCurrentRoute();
       this.currentStops = stops;
+      this.currentRouteId = routeId;
+      this.currentStopIndex = 0;
 
       this.routeViewer.displayRouteStops(routeId, stops);
       this.stopSelector.displayStops(stops);
@@ -97,6 +101,8 @@ class BusTrackingApp {
     this.busTrackerDisplay.displayBuses(buses);
     this.mapManager.updateBusMarkers(buses);
     this.stopSelector.updateBusLocations(buses);
+
+    this.routeViewer.displayRouteStops(this.currentRouteId, this.currentStops);
   }
 
   // ─── Stop Selection ───────────────────────────────────────────────────────
@@ -144,17 +150,30 @@ class BusTrackingApp {
       return;
     }
 
-    // Route selected — find nearest stop
-    let nearestStop = this.currentStops[0];
-    let nearestDist = Infinity;
-    this.currentStops.forEach(stop => {
-      const d = haversine(latitude, longitude, stop.latitude, stop.longitude);
-      if (d < nearestDist) { nearestDist = d; nearestStop = stop; }
-    });
+    // Route selected — advance stop index based on proximity
+    // Only move forward, never backward (like real navigation)
+    const ARRIVED_THRESHOLD = 100;   // within 100m = at this stop
+    const DEPARTED_THRESHOLD = 200;  // more than 200m away = departed, advance to next
 
-    const nearestIdx = this.currentStops.indexOf(nearestStop);
-    const nextStop = this.currentStops[nearestIdx + 1] ?? null;
-    const isAtStop = nearestDist <= 100;
+    // Check if we've passed the current stop and should advance
+    while (this.currentStopIndex < this.currentStops.length - 1) {
+      const currentStop = this.currentStops[this.currentStopIndex];
+      const distToCurrent = haversine(latitude, longitude, currentStop.latitude, currentStop.longitude);
+      const nextStop = this.currentStops[this.currentStopIndex + 1];
+      const distToNext = haversine(latitude, longitude, nextStop.latitude, nextStop.longitude);
+
+      // Advance if we're closer to the next stop than the current one and have departed
+      if (distToCurrent > DEPARTED_THRESHOLD && distToNext < distToCurrent) {
+        this.currentStopIndex++;
+      } else {
+        break;
+      }
+    }
+
+    const nearestStop = this.currentStops[this.currentStopIndex];
+    const nearestDist = haversine(latitude, longitude, nearestStop.latitude, nearestStop.longitude);
+    const nextStop = this.currentStops[this.currentStopIndex + 1] ?? null;
+    const isAtStop = nearestDist <= ARRIVED_THRESHOLD;
 
     const fakeBus = { busId: 'passenger', routeId: '', latitude, longitude, timestamp: new Date(), speed: pos.coords.speed ? pos.coords.speed * 3.6 : undefined };
 
