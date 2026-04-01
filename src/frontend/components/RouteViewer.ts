@@ -107,11 +107,12 @@ export class RouteViewer {
   }
 
   /**
-   * Display stops for a selected route in sequential order
+   * Display stops for a selected route in sequential order.
    * @param routeId - ID of the route
    * @param stops - Array of stops in sequential order
+   * @param nextStopId - Optional ID of the next upcoming stop to highlight
    */
-  displayRouteStops(routeId: string, stops: Stop[]): void {
+  displayRouteStops(routeId: string, stops: Stop[], nextStopId?: string | null): void {
     // Clear existing content
     this.routeStopsElement.innerHTML = '';
 
@@ -131,8 +132,11 @@ export class RouteViewer {
     stopsList.className = 'stops-list';
 
     stops.forEach((stop, index) => {
+      const isNextStop = nextStopId != null && stop.id === nextStopId;
+
       const stopItem = document.createElement('li');
       stopItem.className = 'stop-item';
+      if (isNextStop) stopItem.classList.add('next-stop');
       stopItem.dataset.stopId = stop.id;
 
       // Create stop content
@@ -154,8 +158,16 @@ export class RouteViewer {
       stopContent.appendChild(stopNumber);
       stopContent.appendChild(stopName);
       stopContent.appendChild(stopAddress);
-      stopItem.appendChild(stopContent);
 
+      // "NEXT STOP" badge
+      if (isNextStop) {
+        const nextBadge = document.createElement('span');
+        nextBadge.className = 'next-stop-badge';
+        nextBadge.textContent = 'NEXT STOP';
+        stopContent.appendChild(nextBadge);
+      }
+
+      stopItem.appendChild(stopContent);
       stopsList.appendChild(stopItem);
     });
 

@@ -1,5 +1,6 @@
 /**
  * Integration tests for end-to-end scenarios
+ * Tests the full flow: StateManager + UI components working together
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -8,6 +9,10 @@ import { RouteViewer } from './components/RouteViewer';
 import { StopSelector } from './components/StopSelector';
 import { BusTrackerDisplay } from './components/BusTrackerDisplay';
 import { StopStatus } from '../shared/types';
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
 
 function setupDOM() {
   document.body.innerHTML = `
@@ -19,15 +24,37 @@ function setupDOM() {
 }
 
 function makeRoute(id: string, name: string, stopIds: string[]) {
-  return { id, name, stopIds, isActive: true, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' };
+  return {
+    id,
+    name,
+    stopIds,
+    isActive: true,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  };
 }
 
 function makeStop(id: string, name: string, lat: number, lon: number, seq: number) {
-  return { id, name, latitude: lat, longitude: lon, address: `${seq} Test Ave`, sequenceNumber: seq, createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z' };
+  return {
+    id,
+    name,
+    latitude: lat,
+    longitude: lon,
+    address: `${seq} Test Ave`,
+    sequenceNumber: seq,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  };
 }
 
 function makeBusLocation(busId: string, routeId: string, lat: number, lon: number) {
-  return { busId, routeId, latitude: lat, longitude: lon, timestamp: new Date().toISOString() };
+  return {
+    busId,
+    routeId,
+    latitude: lat,
+    longitude: lon,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 const STOPS = [
@@ -38,7 +65,14 @@ const STOPS = [
   makeStop('stop-5', 'North Terminal', 40.8, -73.95, 5),
 ];
 
-const ROUTE_101 = { ...makeRoute('route-101', 'Downtown Express', STOPS.map(s => s.id)), stops: STOPS };
+const ROUTE_101 = {
+  ...makeRoute('route-101', 'Downtown Express', STOPS.map(s => s.id)),
+  stops: STOPS,
+};
+
+// ============================================================================
+// Integration Test Suite
+// ============================================================================
 
 describe('Integration Tests', () => {
   let stateManager: StateManager;
@@ -62,7 +96,9 @@ describe('Integration Tests', () => {
     vi.useRealTimers();
   });
 
+  // ==========================================================================
   // Scenario 1: Complete user flow
+  // ==========================================================================
 
   describe('Scenario 1: Complete user flow - select route -> view stops -> select drop-off -> track bus', () => {
     test('loads routes and displays them in the route viewer', async () => {
@@ -193,7 +229,9 @@ describe('Integration Tests', () => {
     });
   });
 
+  // ==========================================================================
   // Scenario 2: Multiple buses on same route with different progress
+  // ==========================================================================
 
   describe('Scenario 2: Multiple buses on same route with different progress', () => {
     test('displays all buses on the same route', async () => {
@@ -269,7 +307,9 @@ describe('Integration Tests', () => {
     });
   });
 
+  // ==========================================================================
   // Scenario 3: GPS data updates while viewing route (polling)
+  // ==========================================================================
 
   describe('Scenario 3: GPS data updates while viewing route', () => {
     test('polling updates bus locations over time', async () => {
@@ -349,7 +389,9 @@ describe('Integration Tests', () => {
     });
   });
 
+  // ==========================================================================
   // Scenario 4: Network failure and recovery during tracking
+  // ==========================================================================
 
   describe('Scenario 4: Network failure and recovery during tracking', () => {
     test('StateManager returns cached routes when network fails on retry', async () => {
@@ -389,25 +431,25 @@ describe('Integration Tests', () => {
     });
 
     test('error callback is invoked with a user-friendly message on network failure', async () => {
+      vi.useFakeTimers();
+
       const errorCallback = vi.fn();
       stateManager.setErrorCallback(errorCallback);
 
-      // Use a 404 (not-found) error - it does not retry, so no timer advancement needed
-      (global.fetch as any).mockResolvedValue({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-      });
+      (global.fetch as any).mockRejectedValue(new TypeError('Failed to fetch'));
 
-      await expect(stateManager.loadRoutes()).rejects.toThrow();
+      const loadPromise = stateManager.loadRoutes();
+
+      // Advance through all retry delays: 1s, 2s, 4s
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(4000);
+
+      await expect(loadPromise).rejects.toThrow();
       expect(errorCallback).toHaveBeenCalled();
 
-      // Error callback receives a user-friendly Error object
-      const [error, context] = errorCallback.mock.calls[0];
-      expect(error).toBeInstanceOf(Error);
-      expect(typeof error.message).toBe('string');
-      expect(error.message.length).toBeGreaterThan(0);
-      expect(context).toBe('loadRoutes');
+      const [error] = errorCallback.mock.calls[0];
+      expect(error.message).toContain('Unable to connect');
     });
 
     test('recovery: after network failure, successful poll updates bus locations', async () => {
@@ -416,7 +458,9 @@ describe('Integration Tests', () => {
       (global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => ROUTE_101 });
       await stateManager.selectRoute('route-101');
 
+      // First bus fetch fails (no prior cache)
       (global.fetch as any).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      // Recovery: second fetch succeeds
       const busLocs = [makeBusLocation('bus-1', 'route-101', STOPS[2].latitude, STOPS[2].longitude)];
       (global.fetch as any).mockResolvedValueOnce({ ok: true, json: async () => busLocs });
 
@@ -443,6 +487,7 @@ describe('Integration Tests', () => {
 
       (global.fetch as any).mockRejectedValue(new TypeError('Failed to fetch'));
 
+      // Local state operations still work without network
       stopSelector.onStopSelected('stop-2');
       expect(stopSelector.getSelectedStop()).toBe('stop-2');
 
@@ -456,7 +501,7 @@ describe('Integration Tests', () => {
 
       busTracker.setStops(stateManager.getStopsForCurrentRoute());
 
-      // Signal GPS unavailable before any location data arrives
+      // Signal GPS unavailable for a bus before any location data arrives
       busTracker.showGPSUnavailable('bus-1');
 
       const unavailableMsg = document.querySelector('.gps-unavailable');

@@ -358,11 +358,19 @@ export class BusTrackerDisplay {
       return section;
     }
 
+    // Find the index of the CURRENT stop so we can identify the next one
+    const currentStopIndex = this.currentStops.findIndex(
+      stop => statusMap.get(stop.id) === StopStatus.CURRENT
+    );
+    const nextStopIndex = currentStopIndex !== -1 ? currentStopIndex + 1 : -1;
+
     this.currentStops.forEach((stop, index) => {
       const status = statusMap.get(stop.id) || StopStatus.UPCOMING;
+      const isNextStop = index === nextStopIndex;
 
       const stopItem = document.createElement('li');
       stopItem.className = `stop-progress-item status-${status}`;
+      if (isNextStop) stopItem.classList.add('next-stop');
       stopItem.dataset.stopId = stop.id;
       stopItem.dataset.status = status;
 
@@ -387,6 +395,14 @@ export class BusTrackerDisplay {
       stopContent.appendChild(stopNumber);
       stopContent.appendChild(stopName);
       stopContent.appendChild(statusIndicator);
+
+      // "NEXT STOP" badge — shown only for the stop immediately after CURRENT
+      if (isNextStop) {
+        const nextBadge = document.createElement('span');
+        nextBadge.className = 'next-stop-badge';
+        nextBadge.textContent = 'NEXT STOP';
+        stopContent.appendChild(nextBadge);
+      }
 
       stopItem.appendChild(stopContent);
       stopsList.appendChild(stopItem);
@@ -471,6 +487,23 @@ export class BusTrackerDisplay {
    */
   getBusLocations(): BusLocation[] {
     return Array.from(this.currentBuses.values());
+  }
+
+  /**
+   * Get the next upcoming stop for a specific bus (the stop immediately after CURRENT)
+   * @param busId - ID of the bus
+   * @returns The next Stop object, or null if none
+   */
+  getNextStop(busId: string): Stop | null {
+    const statusMap = this.stopStatuses.get(busId);
+    if (!statusMap || this.currentStops.length === 0) return null;
+
+    const currentIndex = this.currentStops.findIndex(
+      stop => statusMap.get(stop.id) === StopStatus.CURRENT
+    );
+
+    if (currentIndex === -1 || currentIndex + 1 >= this.currentStops.length) return null;
+    return this.currentStops[currentIndex + 1];
   }
 
   /**
